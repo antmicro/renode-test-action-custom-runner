@@ -1,0 +1,33 @@
+on: [push]
+
+name: Renode Robot Framework tests
+
+jobs:
+  run-tests:
+    container: debian:11
+    runs-on: [self-hosted, Linux, X64]
+    env:
+      GHA_PREEMPTIBLE: "false"
+      GHA_SSH_TUNNEL_KEY: "${{ secrets.GHA_SSH_TUNNEL_KEY }}"
+      GHA_SSH_TUNNEL_CONFIG: "${{ secrets.GHA_SSH_TUNNEL_CONFIG }}"
+    steps:
+    - name: Install requirements
+      run: apt update && apt install -y wget python3-pip
+    - name: Run robot tests
+      uses: antmicro/renode-test-action@v2.0.0
+      with:
+        renode-version: 'latest'
+        tests-to-run: '${{ runner.temp }}/renode/tests/**/*.robot'
+        renode-path: '${{ runner.temp }}/renode'
+    - name: Archive artifacts
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: artifacts
+        path: |
+          robot_output.xml
+          log.html
+          report.html
+          snapshots
+          logs
+        retention-days: 1
