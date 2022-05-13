@@ -1,0 +1,47 @@
+on: [push]
+
+name: CFU-Playground Robot Framework tests
+
+jobs:
+  run-tests:
+    container: debian:11
+    runs-on: [self-hosted, Linux, X64]
+    env:
+      GHA_PREEMPTIBLE: "false"
+      GHA_SSH_TUNNEL_KEY: "${{ secrets.GHA_SSH_TUNNEL_KEY }}"
+      GHA_SSH_TUNNEL_CONFIG: "${{ secrets.GHA_SSH_TUNNEL_CONFIG }}"
+    steps:
+    - name: Install requirements
+      run: |
+        apt update && apt install -y ccache cmake expect git libevent-dev libftdi1-dev libjson-c-dev libusb-1.0-0-dev ninja-build openocd python3-pip verilator wget
+        mkdir -p /toolchain/riscv64-unknown && wget --progress=dot:giga https://static.dev.sifive.com/dev-tools/freedom-tools/v2020.08/riscv64-unknown-elf-gcc-10.1.0-2020.08.2-x86_64-linux-ubuntu14.tar.gz -O - | tar xz -C /toolchain/riscv64-unknown --strip-components=1
+    - name: Build CFU-Playground
+      run: |
+        export PATH="$PATH:/toolchain/riscv64-unknown/bin"
+        git clone https://github.com/google/CFU-Playground.git /CFU-Playground
+        pushd /CFU-Playground
+        ./scripts/setup -ci
+        for f in proj/* ; do
+          if [ -d "$f" ] && ! [[ "$f" =~ hps_accel|mport ]]; then
+            # skip hps_accel, issue: https://github.com/google/CFU-Playground/issues/546
+            make -C "$f" renode-scripts
+          fi
+        done
+        popd
+    - name: Run robot tests
+      uses: antmicro/renode-test-action@v2.0.0
+      with:
+        renode-version: 'latest'
+        tests-to-run: '/CFU-Playground/proj/*/build/renode/*.robot'
+        renode-path: '/CFU-Playground/third_party/renode'
+    - name: Archive artifacts
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: cfu-playground-artifacts
+        path: |
+          robot_output.xml
+          log.html
+          report.html
+          snapshots
+          logs
